@@ -1,0 +1,40 @@
+{
+  "status": "healthy",
+  "timestamp": "2025-06-12T21:30:00Z",
+  "version": "1.0.0",
+  "service": "clojure-katas",
+  "description": "Advanced LLM Interaction Patterns and AI Architecture Katas",
+  "endpoints": {
+    "main": {
+      "path": "/",
+      "status": "operational"
+    },
+    "katas": {
+      "sequences": "available",
+      "trees": "available", 
+      "mathematics": "available",
+      "llm-patterns": "available",
+      "ai-architecture": "available"
+    }
+  },
+  "features": [
+    "Chain-of-Thought Reasoning",
+    "Constitutional AI Critique", 
+    "Retrieval-Augmented Generation",
+    "Multi-Agent Debate Systems",
+    "Attention Mechanisms",
+    "Global Workspace Theory",
+    "Neural Plasticity Models",
+    "Interactive REPL Environment"
+  ],
+  "deployment": {
+    "github-pages": "https://uprootiny.github.io/clojure.katas/",
+    "netlify": "https://clojure-katas.netlify.app/",
+    "repository": "https://github.com/uprootiny/clojure.katas"
+  },
+  "metrics": {
+    "build_time": "< 2 minutes",
+    "bundle_size": "< 5MB",
+    "load_time": "< 3 seconds"
+  }
+}

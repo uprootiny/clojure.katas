@@ -1,0 +1,94 @@
+name: Health Check & Monitoring
+
+on:
+  schedule:
+    # Run every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        endpoint:
+          - "https://uprootiny.github.io/clojure.katas/"
+          - "https://clojure-katas.netlify.app/"
+    
+    steps:
+    - name: Check endpoint availability
+      run: |
+        echo "Checking ${{ matrix.endpoint }}"
+        
+        # Basic connectivity test
+        curl -f -s -I "${{ matrix.endpoint }}" || {
+          echo "❌ Endpoint unreachable: ${{ matrix.endpoint }}"
+          exit 1
+        }
+        
+        # Content validation
+        RESPONSE=$(curl -f -s "${{ matrix.endpoint }}")
+        
+        if echo "$RESPONSE" | grep -q "Clojure Katas"; then
+          echo "✅ Content validation passed"
+        else
+          echo "❌ Content validation failed"
+          exit 1
+        fi
+        
+        # Performance check
+        LOAD_TIME=$(curl -w "%{time_total}" -o /dev/null -s "${{ matrix.endpoint }}")
+        if (( $(echo "$LOAD_TIME < 3.0" | bc -l) )); then
+          echo "✅ Performance OK: ${LOAD_TIME}s"
+        else
+          echo "⚠️ Slow load time: ${LOAD_TIME}s"
+        fi
+        
+    - name: Check JavaScript bundle
+      run: |
+        BASE_URL="${{ matrix.endpoint }}"
+        JS_URL="${BASE_URL}js/main.js"
+        
+        curl -f -s -I "$JS_URL" || {
+          echo "❌ JavaScript bundle unavailable"
+          exit 1
+        }
+        
+        echo "✅ JavaScript bundle accessible"
+        
+    - name: Advanced health checks
+      run: |
+        # Check for specific kata patterns
+        RESPONSE=$(curl -f -s "${{ matrix.endpoint }}")
+        
+        PATTERNS=("LLM Patterns" "AI Architecture" "Chain of Thought" "Global Workspace")
+        
+        for pattern in "${PATTERNS[@]}"; do
+          if echo "$RESPONSE" | grep -q "$pattern"; then
+            echo "✅ Found pattern: $pattern"
+          else
+            echo "⚠️ Missing pattern: $pattern"
+          fi
+        done
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "🚨 Health check failed for ${{ matrix.endpoint }}"
+        echo "Timestamp: $(date -u)"
+        echo "This would trigger alerting in production"
+        
+  status-badge-update:
+    needs: health-check
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Update status
+      run: |
+        if [ "${{ needs.health-check.result }}" == "success" ]; then
+          echo "✅ All systems operational"
+        else
+          echo "❌ Some endpoints experiencing issues"
+        fi

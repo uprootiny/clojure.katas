@@ -1,2 +1,5 @@
 .env
 node_modules/
+.shadow-cljs/
+public/js/
+*.log

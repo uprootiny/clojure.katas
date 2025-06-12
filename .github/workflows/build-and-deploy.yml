@@ -1,0 +1,198 @@
+name: Build and Deploy Clojure Katas
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build ClojureScript
+      run: npx shadow-cljs release app
+      
+    - name: Run health checks
+      run: |
+        # Check if build artifacts exist
+        ls -la public/js/
+        # Validate HTML structure
+        if [ ! -f "public/index.html" ]; then
+          echo "Missing index.html"
+          exit 1
+        fi
+        # Check for main.js
+        if [ ! -f "public/js/main.js" ]; then
+          echo "Missing main.js build artifact"
+          exit 1
+        fi
+        echo "Build validation passed ✅"
+        
+    - name: Setup demo server for testing
+      run: |
+        cd public
+        python3 -m http.server 8080 &
+        SERVER_PID=$!
+        sleep 3
+        
+        # Test server responsiveness
+        curl -f http://localhost:8080/ > /dev/null || exit 1
+        curl -f http://localhost:8080/js/main.js > /dev/null || exit 1
+        
+        # Cleanup
+        kill $SERVER_PID
+        echo "Demo server validation passed ✅"
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: clojure-katas-build
+        path: public/
+        retention-days: 30
+        
+  deploy-github-pages:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build for production
+      run: npx shadow-cljs release app
+      
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to GitHub Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./public
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+      
+  deploy-netlify:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build for production
+      run: npx shadow-cljs release app
+      
+    - name: Deploy to Netlify
+      uses: nwtgck/actions-netlify@v3.0
+      with:
+        publish-dir: './public'
+        production-branch: main
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        deploy-message: "Deploy from GitHub Actions"
+        enable-pull-request-comment: true
+        enable-commit-comment: true
+        overwrites-pull-request-comment: true
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        
+  performance-audit:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: clojure-katas-build
+        path: public/
+        
+    - name: Setup Lighthouse CI
+      run: |
+        npm install -g @lhci/cli@0.12.x
+        cd public
+        python3 -m http.server 8080 &
+        SERVER_PID=$!
+        sleep 3
+        
+    - name: Run Lighthouse audit
+      run: |
+        lhci autorun --upload.target=temporary-public-storage --collect.url=http://localhost:8080
+        
+    - name: Performance validation
+      run: |
+        # Check bundle size
+        BUNDLE_SIZE=$(stat -c%s "public/js/main.js")
+        MAX_SIZE=5242880  # 5MB
+        if [ $BUNDLE_SIZE -gt $MAX_SIZE ]; then
+          echo "Bundle size too large: ${BUNDLE_SIZE} bytes (max: ${MAX_SIZE})"
+          exit 1
+        fi
+        echo "Bundle size OK: ${BUNDLE_SIZE} bytes ✅"
